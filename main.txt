@@ -1,0 +1,56 @@
+clc; % Clear the command window
+
+%% Input image
+% Browse for an image file
+[filename, pathname] = uigetfile({'.jpg;.jpeg;.png;.bmp;*.tif'}, 'Select an Image'); % Open a file dialog to select an image file
+fullpath = fullfile(pathname, filename); % Create the full path to the selected image
+input_image = imread(fullpath); % Read the selected image
+
+%% Preprocessing
+% Reducing the haze using imreducehaze function
+reduceHaze_Image = imreducehaze(input_image); % Reduce the haze in the input image
+
+%% Blood vessels extraction
+
+% Green channel selection
+green_channelImg = reduceHaze_Image(:, :, 2); % Select the green channel of the reduced haze image
+
+% CLAHE (Contrast Limited Adaptive Histogram Equalization)
+clahe_image = adapthisteq(green_channelImg, 'clipLimit', 0.01, 'Distribution', 'rayleigh'); % Apply CLAHE to enhance contrast
+
+% Filters image A with a 2-D Gaussian smoothing kernel with a specified standard deviation (sigma)
+sigma = 4;
+gaussianFiltered = imgaussfilt(clahe_image, sigma); % Apply Gaussian filtering with a standard deviation of 4
+
+%% Morphological operations - applying a linear structuring element with various orientations
+
+% Initialize Mtotal as zeros
+Mtotal = zeros(size(input_image), 'like', input_image); % Initialize Mtotal with the same datatype as input_image
+
+for angle = 0:45:315
+    lineStruct = strel('line', 150, angle); % Create a linear structuring element at each specified angle
+    dilation = imdilate(gaussianFiltered, lineStruct); % Dilation operation on the Gaussian filtered image
+    erosion = imerode(dilation, lineStruct); % Erosion operation on the dilated image
+    response = (erosion - gaussianFiltered); % Calculate the response
+    
+    % Ensure response has the same data type as Mtotal
+    response = cast(response, 'like', Mtotal);
+    
+    Mtotal = Mtotal + response; % Accumulate the response for each orientation
+end
+
+% Bernsen Thresholding and final vessel image creation
+% Set the parameters for Bernsen thresholding
+cmin = 25;  % Minimum contrast
+n = 25;     % Neighborhood size
+bg = 'bright';  % Background type ('bright' or 'dark')
+
+% Apply Bernsen thresholding on the image
+thresholded_image = bernsen(uint8(Mtotal), cmin, n, bg);
+figure;
+imshow(thresholded_image, []);
+title('Image after Bernsen Thresholding');
+
+
+
+
